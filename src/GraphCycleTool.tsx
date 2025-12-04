@@ -132,7 +132,7 @@ export default function GraphCycleTool() {
             (e.a === nearest.id && e.b === lastNode!.id)
           )) {
             if (nearest.id === nodePath[0] && nodePath.length >= 2) {
-              // Coming back to start - complete the cycle
+              // Coming back to start - complete the cycle (keep duplicate for Eulerian validation)
               nodePath.push(nearest.id);
               break;
             } else if (!visitedNodes.has(nearest.id) || nearest.id === nodePath[0]) {
@@ -147,9 +147,9 @@ export default function GraphCycleTool() {
       }
     }
     
-    // Check if path forms a cycle
+    // Return path with duplicate start node if it's a cycle (required for Eulerian validation)
     if (nodePath.length >= 3 && nodePath[0] === nodePath[nodePath.length - 1]) {
-      return nodePath.slice(0, -1); // Remove duplicate start node
+      return nodePath; // Keep duplicate start node for Eulerian cycle validation
     }
     
     return nodePath;
@@ -178,15 +178,16 @@ export default function GraphCycleTool() {
       const detected = detectPathFromDrawing(newPath);
       setDetectedPath(detected);
       
-      // Check if it's a cycle
+      // Check if it's a cycle (keep duplicate start node for Eulerian validation)
       if (detected.length >= 3 && detected[0] === detected[detected.length - 1]) {
-        setCycle(detected.slice(0, -1));
+        setCycle(detected); // Keep duplicate start node
       } else if (detected.length >= 3) {
         // Check if we're back at the start
         const firstNode = nodes.find(n => n.id === detected[0]);
         const lastPoint = svgPt;
         if (firstNode && distance(lastPoint, firstNode) < 40) {
-          setCycle(detected);
+          // Add duplicate start node to make it a proper cycle
+          setCycle([...detected, detected[0]]);
         }
       }
       
