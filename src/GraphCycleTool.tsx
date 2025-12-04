@@ -412,9 +412,10 @@ export default function GraphCycleTool() {
                   const b = nodeById(ed.b);
                   if (!a || !b) return null;
                   const inCycle = cycle && (() => {
-                    for (let i = 0; i < cycle.length; i++) {
+                    // Iterate up to length - 1 to avoid the duplicate start node edge
+                    for (let i = 0; i < cycle.length - 1; i++) {
                       const n1 = cycle[i];
-                      const n2 = cycle[(i + 1) % cycle.length];
+                      const n2 = cycle[i + 1];
                       if ((n1 === a.id && n2 === b.id) || (n1 === b.id && n2 === a.id)) return true;
                     }
                     return false;
@@ -474,7 +475,7 @@ export default function GraphCycleTool() {
             <div className="mt-2 text-xs text-gray-700 flex-shrink-0">
               <div>
                 Detected path: {detectedPath.length > 0 ? detectedPath.join(' → ') : 'Draw a path...'}
-                {cycle && ` (Path: ${cycle.join(' → ')})`}
+                {cycle && ` (Cycle: ${cycle.length > 1 ? cycle.slice(0, -1).join(' → ') + ' → ' + cycle[0] : cycle.join(' → '))`}
               </div>
               {currentChallenge && cycle && !challengeCompleted && (
                 <div className="mt-1 text-orange-600 font-medium">
