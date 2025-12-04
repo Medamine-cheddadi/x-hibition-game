@@ -7,4 +7,3 @@ export default defineConfig({
   // Use '/' for Vercel, or '/xhibition/' for GitHub Pages
   base: '/',
 })
-

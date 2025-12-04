@@ -9,6 +9,9 @@
       "source": "/(.*)",
       "destination": "/index.html"
     }
-  ]
+  ],
+  "env": {
+    "VITE_BASE_PATH": "/"
+  }
 }
 
