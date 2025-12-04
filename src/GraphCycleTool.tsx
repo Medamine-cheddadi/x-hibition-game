@@ -206,9 +206,14 @@ export default function GraphCycleTool() {
       const firstNode = nodes.find(n => n.id === finalDetected[0]);
       const lastPoint = drawPath[drawPath.length - 1];
       if (firstNode && distance(lastPoint, firstNode) < 50) {
-        setCycle(finalDetected);
+        // Ensure cycle has duplicate start node
+        if (finalDetected[0] !== finalDetected[finalDetected.length - 1]) {
+          setCycle([...finalDetected, finalDetected[0]]);
+        } else {
+          setCycle(finalDetected);
+        }
       } else if (finalDetected[0] === finalDetected[finalDetected.length - 1]) {
-        setCycle(finalDetected.slice(0, -1));
+        setCycle(finalDetected); // Keep duplicate start node
       }
     }
     
