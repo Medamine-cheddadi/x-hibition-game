@@ -1,10 +1,10 @@
 import React, { useState, useRef, useEffect, useCallback } from "react";
-import { challenges, Challenge, isCycleCorrect } from "./challenges";
+import { challenges, Challenge, isEulerianCycle } from "./challenges";
 
-// Touch-based Cycle Drawing Game
+// Touch-based Eulerian Cycle Drawing Game
 // - Only displays predefined challenges
-// - Draw cycles by touching/dragging along edges on the screen
-// - Automatically detects cycles when path closes
+// - Draw Eulerian cycles by touching/dragging along edges on the screen
+// - Eulerian cycles visit every edge exactly once
 
 interface Node {
   id: number;
@@ -58,10 +58,10 @@ export default function GraphCycleTool() {
     }
   }, [currentChallenge]);
 
-  // Check if cycle is correct when it's found
+  // Check if cycle is an Eulerian cycle (visits every edge exactly once)
   useEffect(() => {
     if (cycle && currentChallenge && !challengeCompleted && detectedPath.length >= 3) {
-      const correct = isCycleCorrect(cycle, currentChallenge.expectedCycles);
+      const correct = isEulerianCycle(cycle, currentChallenge.edges);
       if (correct && !challengeCompleted) {
         setChallengeCompleted(true);
         setCompletedChallenges(prev => new Set([...prev, currentChallenge.id]));
@@ -262,7 +262,7 @@ export default function GraphCycleTool() {
             <div className="text-6xl mb-4">🎉</div>
             <h2 className="text-3xl font-bold text-green-600 mb-2">Congratulations!</h2>
             <p className="text-xl text-gray-700 mb-4">
-              You found the correct cycle in <strong>"{currentChallenge.name}"</strong>!
+              You found the Eulerian cycle in <strong>"{currentChallenge.name}"</strong>!
             </p>
             <div className="flex gap-3 justify-center mt-6">
               {hasNextChallenge ? (
@@ -311,8 +311,8 @@ export default function GraphCycleTool() {
           <div className="flex items-center justify-center gap-6">
             <img src="/logo.svg" alt="Club Logo" className="h-20 w-20 md:h-28 md:w-28" />
             <div className="text-center">
-              <h1 className="text-base md:text-lg font-semibold text-gray-700">Graph Cycle Challenge</h1>
-              <p className="text-xs text-gray-500 mt-1">Draw cycles by touching the screen</p>
+              <h1 className="text-base md:text-lg font-semibold text-gray-700">Eulerian Cycle Challenge</h1>
+              <p className="text-xs text-gray-500 mt-1">Draw Eulerian cycles by touching the screen</p>
             </div>
           </div>
           {currentChallenge && (
@@ -378,7 +378,7 @@ export default function GraphCycleTool() {
             <div className={`mb-3 p-2 rounded flex-shrink-0 ${challengeCompleted ? 'bg-green-100 border-2 border-green-500' : 'bg-blue-50 border border-blue-200'}`}>
               <div className="flex justify-between items-center">
                 <p className="text-xs text-gray-600">
-                  👆 Touch and drag along the edges to draw your cycle path
+                  👆 Touch and drag along the edges to draw an Eulerian cycle (visit every edge exactly once)
                 </p>
                 {challengeCompleted && (
                   <span className="text-green-700 font-semibold text-sm">✓ Completed!</span>
@@ -468,11 +468,11 @@ export default function GraphCycleTool() {
             <div className="mt-2 text-xs text-gray-700 flex-shrink-0">
               <div>
                 Detected path: {detectedPath.length > 0 ? detectedPath.join(' → ') : 'Draw a path...'}
-                {cycle && ` (Cycle: ${cycle.join(' → ')})`}
+                {cycle && ` (Path: ${cycle.join(' → ')})`}
               </div>
               {currentChallenge && cycle && !challengeCompleted && (
                 <div className="mt-1 text-orange-600 font-medium">
-                  ⚠ Cycle found, but it's not the expected one. Keep trying!
+                  ⚠ Path found, but it's not an Eulerian cycle. Visit every edge exactly once!
                 </div>
               )}
             </div>

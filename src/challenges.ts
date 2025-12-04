@@ -1,12 +1,13 @@
-// Predefined graph challenges
-// Each challenge has nodes, edges, and expected cycles
+// Predefined graph challenges for Eulerian cycles
+// Each challenge must be an Eulerian graph (all nodes have even degree)
+// Players must find an Eulerian cycle that visits every edge exactly once
 
 export interface Challenge {
   id: number;
   name: string;
   nodes: Array<{ id: number; x: number; y: number }>;
   edges: Array<{ id: string; a: number; b: number }>;
-  expectedCycles: number[][]; // Array of valid cycles (each cycle is an array of node IDs)
+  expectedCycles: number[][]; // Reference examples (validation uses Eulerian cycle check)
   difficulty: 'easy' | 'medium' | 'hard';
 }
 
@@ -430,21 +431,43 @@ export const challenges: Challenge[] = [
   }
 ];
 
-// Helper function to normalize cycles (handle different starting points and directions)
-export function normalizeCycle(cycle: number[]): string {
-  if (cycle.length === 0) return '';
-  // Find the minimum node ID to use as starting point
-  const minIndex = cycle.indexOf(Math.min(...cycle));
-  const normalized = [...cycle.slice(minIndex), ...cycle.slice(0, minIndex)];
-  // Also check reverse
-  const reverse = [...normalized].reverse();
-  // Return lexicographically smaller one
-  return normalized.join(',') < reverse.join(',') ? normalized.join(',') : reverse.join(',');
+// Helper function to get edge key (normalized, undirected)
+function getEdgeKey(a: number, b: number): string {
+  return a < b ? `${a}-${b}` : `${b}-${a}`;
 }
 
-// Check if a found cycle matches any expected cycle
-export function isCycleCorrect(foundCycle: number[], expectedCycles: number[][]): boolean {
-  const normalizedFound = normalizeCycle(foundCycle);
-  return expectedCycles.some(expected => normalizeCycle(expected) === normalizedFound);
+// Check if a path is an Eulerian cycle (visits every edge exactly once)
+export function isEulerianCycle(foundCycle: number[], edges: Array<{ id: string; a: number; b: number }>): boolean {
+  if (foundCycle.length === 0 || edges.length === 0) return false;
+  
+  // Must be a cycle (start and end at same node)
+  if (foundCycle[0] !== foundCycle[foundCycle.length - 1]) return false;
+  
+  // Path should have length = number of edges + 1 (since it's a cycle)
+  if (foundCycle.length !== edges.length + 1) return false;
+  
+  // Count edge usage
+  const edgeCount = new Map<string, number>();
+  edges.forEach(edge => {
+    const key = getEdgeKey(edge.a, edge.b);
+    edgeCount.set(key, 0);
+  });
+  
+  // Count edges used in the path
+  for (let i = 0; i < foundCycle.length - 1; i++) {
+    const a = foundCycle[i];
+    const b = foundCycle[i + 1];
+    const key = getEdgeKey(a, b);
+    const count = edgeCount.get(key) || 0;
+    edgeCount.set(key, count + 1);
+  }
+  
+  // Check that every edge is used exactly once
+  for (const count of edgeCount.values()) {
+    if (count !== 1) return false;
+  }
+  
+  return true;
 }
+
 
