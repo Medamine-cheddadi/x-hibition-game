@@ -347,7 +347,6 @@ export default function GraphCycleTool() {
                       <span className="text-green-600">✓</span>
                     )}
                   </div>
-                  <p className="text-sm text-gray-600 mb-2">{challenge.description}</p>
                   <span className={`inline-block px-2 py-1 rounded text-xs font-medium ${getDifficultyColor(challenge.difficulty)}`}>
                     {challenge.difficulty}
                   </span>
@@ -378,14 +377,13 @@ export default function GraphCycleTool() {
 
             <div className={`mb-3 p-2 rounded flex-shrink-0 ${challengeCompleted ? 'bg-green-100 border-2 border-green-500' : 'bg-blue-50 border border-blue-200'}`}>
               <div className="flex justify-between items-center">
-                <p className="font-medium text-sm text-gray-800">{currentChallenge.description}</p>
+                <p className="text-xs text-gray-600">
+                  👆 Touch and drag along the edges to draw your cycle path
+                </p>
                 {challengeCompleted && (
                   <span className="text-green-700 font-semibold text-sm">✓ Completed!</span>
                 )}
               </div>
-              <p className="text-xs text-gray-600 mt-1">
-                👆 Touch and drag along the edges to draw your cycle path
-              </p>
             </div>
 
             <div className="border rounded relative flex-1 min-h-0" style={{ touchAction: 'none' }}>

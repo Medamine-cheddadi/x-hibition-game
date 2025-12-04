@@ -4,7 +4,6 @@
 export interface Challenge {
   id: number;
   name: string;
-  description: string;
   nodes: Array<{ id: number; x: number; y: number }>;
   edges: Array<{ id: string; a: number; b: number }>;
   expectedCycles: number[][]; // Array of valid cycles (each cycle is an array of node IDs)
@@ -15,7 +14,6 @@ export const challenges: Challenge[] = [
   {
     id: 1,
     name: "Triangle",
-    description: "Find the cycle in this simple triangle graph",
     difficulty: 'easy',
     nodes: [
       { id: 1, x: 200, y: 100 },
@@ -39,7 +37,6 @@ export const challenges: Challenge[] = [
   {
     id: 2,
     name: "Square",
-    description: "Find all cycles in this square graph",
     difficulty: 'easy',
     nodes: [
       { id: 1, x: 150, y: 100 },
@@ -67,7 +64,6 @@ export const challenges: Challenge[] = [
   {
     id: 3,
     name: "Pentagon",
-    description: "Find the cycle in this pentagon",
     difficulty: 'medium',
     nodes: [
       { id: 1, x: 200, y: 50 },
@@ -99,7 +95,6 @@ export const challenges: Challenge[] = [
   {
     id: 4,
     name: "Hexagon with Diagonals",
-    description: "Find the longest cycle in this hexagon",
     difficulty: 'hard',
     nodes: [
       { id: 1, x: 150, y: 100 },
@@ -138,7 +133,6 @@ export const challenges: Challenge[] = [
   {
     id: 5,
     name: "Star Graph",
-    description: "Find the cycle passing through all outer nodes",
     difficulty: 'hard',
     nodes: [
       { id: 1, x: 200, y: 80 },   // Top
@@ -177,7 +171,6 @@ export const challenges: Challenge[] = [
   {
     id: 6,
     name: "Double Bridge",
-    description: "Find the cycle using both bridges",
     difficulty: 'hard',
     nodes: [
       { id: 1, x: 100, y: 100 },
@@ -218,7 +211,6 @@ export const challenges: Challenge[] = [
   {
     id: 7,
     name: "Octagon Challenge",
-    description: "Find the complete cycle around all 8 nodes",
     difficulty: 'hard',
     nodes: [
       { id: 1, x: 200, y: 50 },
@@ -267,7 +259,6 @@ export const challenges: Challenge[] = [
   {
     id: 8,
     name: "Complex Web",
-    description: "Find any valid cycle in this interconnected web",
     difficulty: 'hard',
     nodes: [
       { id: 1, x: 150, y: 100 },
@@ -328,7 +319,6 @@ export const challenges: Challenge[] = [
   {
     id: 9,
     name: "Wheel Graph",
-    description: "Find the cycle around the rim",
     difficulty: 'hard',
     nodes: [
       { id: 1, x: 200, y: 60 },
@@ -382,7 +372,6 @@ export const challenges: Challenge[] = [
   {
     id: 10,
     name: "Master Challenge",
-    description: "Find the longest cycle in this complex network",
     difficulty: 'hard',
     nodes: [
       { id: 1, x: 100, y: 80 },
