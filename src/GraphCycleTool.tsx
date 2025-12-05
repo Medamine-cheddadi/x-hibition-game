@@ -1,4 +1,4 @@
-import React, { useState, useRef, useEffect, useCallback, useMemo } from "react";
+import React, { useState, useRef } from "react";
 import { challenges, Challenge } from "./challenges";
 
 // --- Graph Theory Logic Helpers ---
@@ -217,11 +217,18 @@ export default function GraphCycleTool() {
       
       {/* Header */}
       <div className="bg-white p-4 shadow-sm z-10 flex justify-between items-center">
-        <div>
-          <h1 className="font-bold text-gray-800 text-lg">Eulerian Path</h1>
-          <p className="text-xs text-gray-500">
-            {currentChallenge ? currentChallenge.name : "Select a Challenge"}
-          </p>
+        <div className="flex items-center gap-3">
+          <img 
+            src="/logo.svg" 
+            alt="Logo" 
+            className="h-10 w-10"
+          />
+          <div>
+            <h1 className="font-bold text-gray-800 text-lg">Eulerian Path</h1>
+            <p className="text-xs text-gray-500">
+              {currentChallenge ? currentChallenge.name : "Select a Challenge"}
+            </p>
+          </div>
         </div>
         {currentChallenge && (
            <button onClick={() => setCurrentChallenge(null)} className="text-sm bg-gray-100 px-3 py-1 rounded hover:bg-gray-200">
@@ -264,7 +271,20 @@ export default function GraphCycleTool() {
 
         {!currentChallenge ? (
           // --- Menu ---
-          <div className="grid grid-cols-2 md:grid-cols-3 gap-3 w-full max-w-2xl overflow-y-auto max-h-full pb-10">
+          <div className="w-full max-w-2xl overflow-y-auto max-h-full pb-10 flex flex-col items-center">
+            {/* Logo Section */}
+            <div className="mb-8 flex flex-col items-center">
+              <img 
+                src="/logo.svg" 
+                alt="Logo" 
+                className="h-24 w-24 mb-4 animate-bounce-in"
+              />
+              <h2 className="text-3xl font-bold text-gray-800 mb-2">Graph Challenges</h2>
+              <p className="text-gray-600 text-sm">Master Eulerian paths and cycles</p>
+            </div>
+            
+            {/* Challenges Grid */}
+            <div className="grid grid-cols-2 md:grid-cols-3 gap-3 w-full">
             {challenges.map(c => (
               <div 
                 key={c.id}
@@ -288,6 +308,7 @@ export default function GraphCycleTool() {
                 </div>
               </div>
             ))}
+            </div>
           </div>
         ) : (
           // --- Game Board ---
