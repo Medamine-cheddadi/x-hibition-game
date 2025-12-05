@@ -200,18 +200,28 @@ export default function GraphCycleTool() {
   }, []);
 
   // Calculate viewBox to center and fit all nodes
-  const calculateViewBox = useCallback((nodeList: Node[], padding: number = 80): string => {
+  const calculateViewBox = useCallback((nodeList: Node[]): string => {
     if (nodeList.length === 0) return "0 0 400 300";
     
-    const minX = Math.min(...nodeList.map(n => n.x)) - padding;
-    const minY = Math.min(...nodeList.map(n => n.y)) - padding;
-    const maxX = Math.max(...nodeList.map(n => n.x)) + padding;
-    const maxY = Math.max(...nodeList.map(n => n.y)) + padding;
+    const minX = Math.min(...nodeList.map(n => n.x));
+    const minY = Math.min(...nodeList.map(n => n.y));
+    const maxX = Math.max(...nodeList.map(n => n.x));
+    const maxY = Math.max(...nodeList.map(n => n.y));
     
-    const width = maxX - minX;
-    const height = maxY - minY;
+    const graphWidth = maxX - minX;
+    const graphHeight = maxY - minY;
     
-    return `${minX} ${minY} ${width} ${height}`;
+    // Add padding as a percentage of the graph size (50% on each side)
+    // This ensures the graph is appropriately sized and centered
+    const paddingX = Math.max(graphWidth * 0.5, 100);
+    const paddingY = Math.max(graphHeight * 0.5, 100);
+    
+    const viewBoxMinX = minX - paddingX;
+    const viewBoxMinY = minY - paddingY;
+    const viewBoxWidth = graphWidth + (paddingX * 2);
+    const viewBoxHeight = graphHeight + (paddingY * 2);
+    
+    return `${viewBoxMinX} ${viewBoxMinY} ${viewBoxWidth} ${viewBoxHeight}`;
   }, []);
 
   const loadChallenge = useCallback((challenge: Challenge) => {
