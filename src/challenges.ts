@@ -227,7 +227,30 @@ export const challenges: Challenge[] = [
       { id: 'e5', a: 1, b: 3 }, { id: 'e6', a: 3, b: 5 },
       { id: 'e7', a: 2, b: 3 }, { id: 'e8', a: 3, b: 4 }
     ]
+  },
+  {
+    id: 9,
+    name: "The Double Bridge",
+    difficulty: 'infinitely hard',
+    type: 'impossible',
+    hint: "Node 3 has 5 connections. Nodes 1, 2, 4 have 3 connections. That's 4 odd nodes!",
+    nodes: [
+      { id: 1, x: 200, y: 100 }, // Top
+      { id: 2, x: 100, y: 250 }, // Left
+      { id: 3, x: 200, y: 200 }, // Center (Hub)
+      { id: 4, x: 300, y: 250 }  // Right
+    ],
+    edges: [
+      { id: 'e1', a: 1, b: 2 }, 
+      { id: 'e2', a: 1, b: 3 }, 
+      { id: 'e3', a: 1, b: 4 },
+      { id: 'e4', a: 2, b: 3 }, // 1st connection 2-3
+      { id: 'e5', a: 2, b: 3 }, // 2nd connection 2-3 (Multigraph)
+      { id: 'e6', a: 3, b: 4 }, // 1st connection 3-4
+      { id: 'e7', a: 3, b: 4 }  // 2nd connection 3-4 (Multigraph)
+    ]
   }
+  
 ];
 
 // --- LOGIC HELPERS ---
