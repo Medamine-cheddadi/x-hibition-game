@@ -41,48 +41,15 @@ export default function GraphCycleTool() {
   const svgRef = useRef<SVGSVGElement>(null);
   const pathRef = useRef<SVGPathElement>(null);
 
-  const moveToNextChallenge = useCallback(() => {
-    if (!currentChallenge) return;
-    
-    const currentIndex = challenges.findIndex(c => c.id === currentChallenge.id);
-    const nextIndex = currentIndex + 1;
-    
-    if (nextIndex < challenges.length) {
-      loadChallenge(challenges[nextIndex]);
-      setShowCongratulations(false);
-    } else {
-      setShowCongratulations(false);
-      setCurrentChallenge(null);
-      resetDrawing();
-      alert("🎊 Amazing! You've completed all challenges! Well done!");
-    }
-  }, [currentChallenge]);
-
-  // Check if cycle is an Eulerian cycle (visits every edge exactly once)
-  useEffect(() => {
-    if (cycle && currentChallenge && !challengeCompleted && detectedPath.length >= 3) {
-      const correct = isEulerianCycle(cycle, currentChallenge.edges);
-      if (correct && !challengeCompleted) {
-        setChallengeCompleted(true);
-        setCompletedChallenges(prev => new Set([...prev, currentChallenge.id]));
-        setShowCongratulations(true);
-        
-        const timer = setTimeout(() => {
-          moveToNextChallenge();
-        }, 3000);
-        
-        return () => clearTimeout(timer);
-      }
-    }
-  }, [cycle, currentChallenge, challengeCompleted, moveToNextChallenge, detectedPath]);
-
   function getSVGPoint(x: number, y: number): Point {
     const svg = svgRef.current;
     if (!svg) return { x: 0, y: 0 };
     const pt = svg.createSVGPoint();
     pt.x = x;
     pt.y = y;
-    const loc = pt.matrixTransform(svg.getScreenCTM()?.inverse());
+    const ctm = svg.getScreenCTM();
+    if (!ctm) return { x: 0, y: 0 };
+    const loc = pt.matrixTransform(ctm.inverse());
     return { x: loc.x, y: loc.y };
   }
 
@@ -223,21 +190,56 @@ export default function GraphCycleTool() {
     }, 1000);
   }
 
-  function resetDrawing() {
+  const resetDrawing = useCallback(() => {
     setDrawPath([]);
     setDetectedPath([]);
     setCycle(null);
     setChallengeCompleted(false);
     setIsDrawing(false);
-  }
+  }, []);
 
-  function loadChallenge(challenge: Challenge) {
+  const loadChallenge = useCallback((challenge: Challenge) => {
     setNodes([...challenge.nodes]);
     setEdges([...challenge.edges]);
     resetDrawing();
     setCurrentChallenge(challenge);
     setShowChallengeSelector(false);
-  }
+  }, [resetDrawing]);
+
+  const moveToNextChallenge = useCallback(() => {
+    if (!currentChallenge) return;
+    
+    const currentIndex = challenges.findIndex(c => c.id === currentChallenge.id);
+    const nextIndex = currentIndex + 1;
+    
+    if (nextIndex < challenges.length) {
+      loadChallenge(challenges[nextIndex]);
+      setShowCongratulations(false);
+    } else {
+      setShowCongratulations(false);
+      setCurrentChallenge(null);
+      resetDrawing();
+      alert("🎊 Amazing! You've completed all challenges! Well done!");
+    }
+  }, [currentChallenge, loadChallenge, resetDrawing]);
+
+  // Check if cycle is an Eulerian cycle (visits every edge exactly once)
+  useEffect(() => {
+    if (cycle && currentChallenge && !challengeCompleted && detectedPath.length >= 3) {
+      const correct = isEulerianCycle(cycle, currentChallenge.edges);
+      if (correct && !challengeCompleted) {
+        setChallengeCompleted(true);
+        setCompletedChallenges(prev => new Set([...prev, currentChallenge.id]));
+        setShowCongratulations(true);
+        
+        const timer = setTimeout(() => {
+          moveToNextChallenge();
+        }, 3000);
+        
+        return () => clearTimeout(timer);
+      }
+    }
+  }, [cycle, currentChallenge, challengeCompleted, moveToNextChallenge, detectedPath]);
 
   const nodeById = (id: number) => nodes.find(n => n.id === id);
 
@@ -475,7 +477,9 @@ export default function GraphCycleTool() {
             <div className="mt-2 text-xs text-gray-700 flex-shrink-0">
               <div>
                 Detected path: {detectedPath.length > 0 ? detectedPath.join(' → ') : 'Draw a path...'}
-                {cycle && ` (Cycle: ${cycle.length > 1 ? cycle.slice(0, -1).join(' → ') + ' → ' + cycle[0] : cycle.join(' → '))`}
+                {cycle && (cycle.length > 1 
+                  ? ` (Cycle: ${cycle.slice(0, -1).join(' → ')} → ${cycle[0]})`
+                  : ` (Cycle: ${cycle.join(' → ')})`)}
               </div>
               {currentChallenge && cycle && !challengeCompleted && (
                 <div className="mt-1 text-orange-600 font-medium">
