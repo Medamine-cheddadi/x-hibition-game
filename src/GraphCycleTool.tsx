@@ -37,6 +37,7 @@ export default function GraphCycleTool() {
   const [drawPath, setDrawPath] = useState<Point[]>([]);
   const [detectedPath, setDetectedPath] = useState<number[]>([]); // Node IDs in order
   const [cycle, setCycle] = useState<number[] | null>(null);
+  const [viewBox, setViewBox] = useState<string>("0 0 400 300");
   
   const svgRef = useRef<SVGSVGElement>(null);
   const pathRef = useRef<SVGPathElement>(null);
@@ -198,13 +199,37 @@ export default function GraphCycleTool() {
     setIsDrawing(false);
   }, []);
 
+  // Calculate viewBox to center and fit all nodes
+  const calculateViewBox = useCallback((nodeList: Node[], padding: number = 80): string => {
+    if (nodeList.length === 0) return "0 0 400 300";
+    
+    const minX = Math.min(...nodeList.map(n => n.x)) - padding;
+    const minY = Math.min(...nodeList.map(n => n.y)) - padding;
+    const maxX = Math.max(...nodeList.map(n => n.x)) + padding;
+    const maxY = Math.max(...nodeList.map(n => n.y)) + padding;
+    
+    const width = maxX - minX;
+    const height = maxY - minY;
+    
+    return `${minX} ${minY} ${width} ${height}`;
+  }, []);
+
   const loadChallenge = useCallback((challenge: Challenge) => {
     setNodes([...challenge.nodes]);
     setEdges([...challenge.edges]);
     resetDrawing();
     setCurrentChallenge(challenge);
     setShowChallengeSelector(false);
-  }, [resetDrawing]);
+    // Calculate and set viewBox for the new challenge
+    setViewBox(calculateViewBox(challenge.nodes));
+  }, [resetDrawing, calculateViewBox]);
+
+  // Update viewBox when nodes change
+  useEffect(() => {
+    if (nodes.length > 0) {
+      setViewBox(calculateViewBox(nodes));
+    }
+  }, [nodes, calculateViewBox]);
 
   const moveToNextChallenge = useCallback(() => {
     if (!currentChallenge) return;
@@ -366,7 +391,7 @@ export default function GraphCycleTool() {
 
         {/* Main Content */}
         {currentChallenge && (
-          <div className="h-full flex flex-col bg-white rounded-lg shadow p-4 max-w-7xl mx-auto">
+          <div className="flex flex-col bg-white rounded-lg shadow p-4 max-w-7xl mx-auto w-full">
             <div className="flex justify-between items-center mb-3 flex-shrink-0">
               <h2 className="text-lg md:text-xl font-semibold">
                 Challenge: {currentChallenge.name}
@@ -394,12 +419,14 @@ export default function GraphCycleTool() {
               </div>
             </div>
 
-            <div className="border rounded relative flex-1 min-h-0" style={{ touchAction: 'none' }}>
+            <div className="border rounded relative flex-1 min-h-[400px] flex items-center justify-center" style={{ touchAction: 'none' }}>
               <svg 
                 ref={svgRef} 
                 width="100%" 
                 height="100%" 
-                style={{ background: '#fafafa' }}
+                viewBox={viewBox}
+                preserveAspectRatio="xMidYMid meet"
+                style={{ background: '#fafafa', minHeight: '400px' }}
                 onTouchStart={handleStart}
                 onTouchMove={handleMove}
                 onTouchEnd={handleEnd}
