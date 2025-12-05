@@ -1,529 +1,386 @@
-import React, { useState, useRef, useEffect, useCallback } from "react";
-import { challenges, Challenge, isEulerianCycle } from "./challenges";
+import React, { useState, useRef, useEffect, useCallback, useMemo } from "react";
+import { challenges, Challenge } from "./challenges";
 
-// Touch-based Eulerian Cycle Drawing Game
-// - Only displays predefined challenges
-// - Draw Eulerian cycles by touching/dragging along edges on the screen
-// - Eulerian cycles visit every edge exactly once
+// --- Graph Theory Logic Helpers ---
 
-interface Node {
-  id: number;
-  x: number;
-  y: number;
-}
+// Check if a path is valid (doesn't reuse edges)
+const isValidWalk = (path: number[], edges: Edge[]) => {
+  const visitedEdges = new Set<string>();
+  for (let i = 0; i < path.length - 1; i++) {
+    const u = path[i];
+    const v = path[i+1];
+    const edgeId = u < v ? `${u}-${v}` : `${v}-${u}`;
+    
+    // Check if edge exists in graph
+    const exists = edges.some(e => {
+        const eId = e.a < e.b ? `${e.a}-${e.b}` : `${e.b}-${e.a}`;
+        return eId === edgeId;
+    });
+    if (!exists) return false;
 
-interface Edge {
-  id: string;
-  a: number;
-  b: number;
-}
+    // Check if reused
+    if (visitedEdges.has(edgeId)) return false;
+    visitedEdges.add(edgeId);
+  }
+  return true;
+};
 
-interface Point {
-  x: number;
-  y: number;
-}
+// Check if standard Eulerian Path (Visit all edges once)
+const checkEulerian = (path: number[], edges: Edge[], isCycleRequired: boolean) => {
+  if (path.length !== edges.length + 1) return false; // Must visit (Edges + 1) nodes
+  if (isCycleRequired && path[0] !== path[path.length-1]) return false; // Cycle check
+  return isValidWalk(path, edges);
+};
+
+// --- Types ---
+interface Node { id: number; x: number; y: number; }
+interface Edge { id: string; a: number; b: number; }
+interface Point { x: number; y: number; }
 
 export default function GraphCycleTool() {
+  // Data State
+  const [currentChallenge, setCurrentChallenge] = useState<Challenge | null>(null);
   const [nodes, setNodes] = useState<Node[]>([]);
   const [edges, setEdges] = useState<Edge[]>([]);
-  const [currentChallenge, setCurrentChallenge] = useState<Challenge | null>(null);
-  const [challengeCompleted, setChallengeCompleted] = useState(false);
   const [completedChallenges, setCompletedChallenges] = useState<Set<number>>(new Set());
-  const [showChallengeSelector, setShowChallengeSelector] = useState(true);
-  const [showCongratulations, setShowCongratulations] = useState(false);
   
-  // Drawing state
+  // Game State
   const [isDrawing, setIsDrawing] = useState(false);
-  const [drawPath, setDrawPath] = useState<Point[]>([]);
-  const [detectedPath, setDetectedPath] = useState<number[]>([]); // Node IDs in order
-  const [cycle, setCycle] = useState<number[] | null>(null);
-  const [viewBox, setViewBox] = useState<string>("0 0 400 300");
+  const [path, setPath] = useState<number[]>([]); // The sequence of Node IDs
+  const [cursor, setCursor] = useState<Point | null>(null); // Current finger position
+  const [activeNode, setActiveNode] = useState<number | null>(null); // Node we are hovering
   
+  // UI State
+  const [victoryState, setVictoryState] = useState<'none' | 'success' | 'impossible-correct'>('none');
   const svgRef = useRef<SVGSVGElement>(null);
-  const pathRef = useRef<SVGPathElement>(null);
 
-  function getSVGPoint(x: number, y: number): Point {
+  // --- Geometry Helpers ---
+  const getSVGPoint = (e: React.TouchEvent | React.MouseEvent): Point => {
     const svg = svgRef.current;
     if (!svg) return { x: 0, y: 0 };
     const pt = svg.createSVGPoint();
-    pt.x = x;
-    pt.y = y;
+    if ('touches' in e && e.touches.length > 0) {
+      pt.x = e.touches[0].clientX;
+      pt.y = e.touches[0].clientY;
+    } else if ('clientX' in e) {
+      pt.x = (e as React.MouseEvent).clientX;
+      pt.y = (e as React.MouseEvent).clientY;
+    }
     const ctm = svg.getScreenCTM();
     if (!ctm) return { x: 0, y: 0 };
     const loc = pt.matrixTransform(ctm.inverse());
     return { x: loc.x, y: loc.y };
-  }
+  };
 
-  function getClientPoint(e: React.TouchEvent | React.MouseEvent): Point {
-    if ('touches' in e && e.touches.length > 0) {
-      return { x: e.touches[0].clientX, y: e.touches[0].clientY };
-    } else if ('clientX' in e) {
-      return { x: e.clientX, y: e.clientY };
-    }
-    return { x: 0, y: 0 };
-  }
+  const distance = (p1: Point, p2: Point) => Math.sqrt((p1.x - p2.x) ** 2 + (p1.y - p2.y) ** 2);
 
-  function distance(p1: Point, p2: Point): number {
-    return Math.sqrt((p1.x - p2.x) ** 2 + (p1.y - p2.y) ** 2);
-  }
-
-  function findNearestNode(point: Point, threshold: number = 30): Node | null {
-    let nearest: Node | null = null;
-    let minDist = threshold;
-    
+  const getNearestNode = (pt: Point, threshold = 45): number | null => {
+    let nearest = null;
+    let minInfo = threshold;
     for (const node of nodes) {
-      const dist = distance(point, node);
-      if (dist < minDist) {
-        minDist = dist;
-        nearest = node;
+      const d = distance(pt, node);
+      if (d < minInfo) {
+        minInfo = d;
+        nearest = node.id;
       }
     }
-    
     return nearest;
-  }
+  };
 
-  function detectPathFromDrawing(drawingPath: Point[]): number[] {
-    if (drawingPath.length === 0) return [];
+  // --- Game Loop ---
+
+  const loadChallenge = (c: Challenge) => {
+    setCurrentChallenge(c);
+    setNodes(c.nodes);
+    setEdges(c.edges);
+    setPath([]);
+    setVictoryState('none');
+    setIsDrawing(false);
+  };
+
+  const reset = () => {
+    setPath([]);
+    setVictoryState('none');
+    setIsDrawing(false);
+    setCursor(null);
+    setActiveNode(null);
+  };
+
+  const handleStart = (e: React.TouchEvent | React.MouseEvent) => {
+    if (!currentChallenge || victoryState !== 'none') return;
+    const pt = getSVGPoint(e);
+    const nodeId = getNearestNode(pt);
     
-    const nodePath: number[] = [];
-    const visitedNodes = new Set<number>();
-    let lastNode: Node | null = null;
+    setIsDrawing(true);
+    setCursor(pt);
     
-    for (const point of drawingPath) {
-      const nearest = findNearestNode(point, 40);
-      if (nearest) {
-        // Only add if it's a new node or we're coming back to the start
-        if (!lastNode || nearest.id !== lastNode.id) {
-          // Check if there's an edge from lastNode to nearest
-          if (!lastNode || edges.some(e => 
-            (e.a === lastNode!.id && e.b === nearest.id) || 
-            (e.a === nearest.id && e.b === lastNode!.id)
-          )) {
-            if (nearest.id === nodePath[0] && nodePath.length >= 2) {
-              // Coming back to start - complete the cycle (keep duplicate for Eulerian validation)
-              nodePath.push(nearest.id);
-              break;
-            } else if (!visitedNodes.has(nearest.id) || nearest.id === nodePath[0]) {
-              if (nodePath.length === 0 || nearest.id !== nodePath[nodePath.length - 1]) {
-                nodePath.push(nearest.id);
-                visitedNodes.add(nearest.id);
-                lastNode = nearest;
-              }
-            }
+    if (nodeId !== null) {
+      setPath([nodeId]);
+      setActiveNode(nodeId);
+    } else {
+      setPath([]); // Missed the start node, clear path
+    }
+  };
+
+  const handleMove = (e: React.TouchEvent | React.MouseEvent) => {
+    if (!currentChallenge || !isDrawing || victoryState !== 'none') return;
+    // Prevent scrolling on mobile while playing
+    if (e.cancelable) e.preventDefault(); 
+
+    const pt = getSVGPoint(e);
+    setCursor(pt);
+    const nodeId = getNearestNode(pt);
+    setActiveNode(nodeId);
+
+    // LOGIC: Adding to path
+    if (nodeId !== null && path.length > 0) {
+      const lastNode = path[path.length - 1];
+      
+      // 1. Must be a different node
+      if (nodeId !== lastNode) {
+        
+        // 2. Jitter prevention: Don't allow immediately going back to the node we just came from
+        // UNLESS the edge exists twice (multigraph), but for simple graphs, this is good UX.
+        const prevNode = path.length > 1 ? path[path.length - 2] : -1;
+        if (nodeId === prevNode) return;
+
+        // 3. Check if edge exists
+        const edgeExists = edges.some(e => 
+          (e.a === lastNode && e.b === nodeId) || (e.a === nodeId && e.b === lastNode)
+        );
+
+        if (edgeExists) {
+          // 4. Check if edge already used
+          const edgeUsed = (() => {
+             // Simple check against current path
+             // Create temp path
+             const tempPath = [...path, nodeId];
+             // Count how many times this specific a-b connection appears
+             // This allows for complex graphs where you might have parallel edges if your data supports it
+             // But simpler: just check valid walk logic
+             return !isValidWalk(tempPath, edges);
+          })();
+
+          if (!edgeUsed) {
+            setPath(prev => [...prev, nodeId]);
           }
         }
       }
     }
-    
-    // Return path with duplicate start node if it's a cycle (required for Eulerian validation)
-    if (nodePath.length >= 3 && nodePath[0] === nodePath[nodePath.length - 1]) {
-      return nodePath; // Keep duplicate start node for Eulerian cycle validation
-    }
-    
-    return nodePath;
-  }
+  };
 
-  function handleStart(e: React.TouchEvent<SVGSVGElement> | React.MouseEvent<SVGSVGElement>) {
-    if (!currentChallenge) return;
-    e.preventDefault();
-    setIsDrawing(true);
-    const clientPt = getClientPoint(e);
-    const svgPt = getSVGPoint(clientPt.x, clientPt.y);
-    setDrawPath([svgPt]);
-    setDetectedPath([]);
-    setCycle(null);
-    setChallengeCompleted(false);
-  }
-
-  function handleMove(e: React.TouchEvent<SVGSVGElement> | React.MouseEvent<SVGSVGElement>) {
-    if (!isDrawing || !currentChallenge) return;
-    e.preventDefault();
-    const clientPt = getClientPoint(e);
-    const svgPt = getSVGPoint(clientPt.x, clientPt.y);
-    
-    setDrawPath(prev => {
-      const newPath = [...prev, svgPt];
-      const detected = detectPathFromDrawing(newPath);
-      setDetectedPath(detected);
-      
-      // Check if it's a cycle (keep duplicate start node for Eulerian validation)
-      if (detected.length >= 3 && detected[0] === detected[detected.length - 1]) {
-        setCycle(detected); // Keep duplicate start node
-      } else if (detected.length >= 3) {
-        // Check if we're back at the start
-        const firstNode = nodes.find(n => n.id === detected[0]);
-        const lastPoint = svgPt;
-        if (firstNode && distance(lastPoint, firstNode) < 40) {
-          // Add duplicate start node to make it a proper cycle
-          setCycle([...detected, detected[0]]);
-        }
-      }
-      
-      return newPath;
-    });
-  }
-
-  function handleEnd(e: React.TouchEvent<SVGSVGElement> | React.MouseEvent<SVGSVGElement>) {
-    if (!isDrawing) return;
-    e.preventDefault();
+  const handleEnd = () => {
     setIsDrawing(false);
-    
-    // Final check for cycle
-    const finalDetected = detectPathFromDrawing(drawPath);
-    if (finalDetected.length >= 3) {
-      const firstNode = nodes.find(n => n.id === finalDetected[0]);
-      const lastPoint = drawPath[drawPath.length - 1];
-      if (firstNode && distance(lastPoint, firstNode) < 50) {
-        // Ensure cycle has duplicate start node
-        if (finalDetected[0] !== finalDetected[finalDetected.length - 1]) {
-          setCycle([...finalDetected, finalDetected[0]]);
-        } else {
-          setCycle(finalDetected);
-        }
-      } else if (finalDetected[0] === finalDetected[finalDetected.length - 1]) {
-        setCycle(finalDetected); // Keep duplicate start node
+    setCursor(null);
+    setActiveNode(null);
+
+    // Check Win Condition
+    if (currentChallenge && path.length > 1) {
+      const isCycle = currentChallenge.type === 'cycle';
+      const won = checkEulerian(path, edges, isCycle);
+      if (won) {
+        setVictoryState('success');
+        setCompletedChallenges(prev => new Set(prev).add(currentChallenge.id));
       }
-    }
-    
-    // Clear drawing after a short delay to show the result
-    setTimeout(() => {
-      setDrawPath([]);
-    }, 1000);
-  }
-
-  const resetDrawing = useCallback(() => {
-    setDrawPath([]);
-    setDetectedPath([]);
-    setCycle(null);
-    setChallengeCompleted(false);
-    setIsDrawing(false);
-  }, []);
-
-  // Calculate viewBox to center and fit all nodes
-  const calculateViewBox = useCallback((nodeList: Node[]): string => {
-    if (nodeList.length === 0) return "0 0 400 300";
-    
-    const minX = Math.min(...nodeList.map(n => n.x));
-    const minY = Math.min(...nodeList.map(n => n.y));
-    const maxX = Math.max(...nodeList.map(n => n.x));
-    const maxY = Math.max(...nodeList.map(n => n.y));
-    
-    const graphWidth = maxX - minX;
-    const graphHeight = maxY - minY;
-    
-    // Add padding as a percentage of the graph size (50% on each side)
-    // This ensures the graph is appropriately sized and centered
-    const paddingX = Math.max(graphWidth * 0.5, 100);
-    const paddingY = Math.max(graphHeight * 0.5, 100);
-    
-    const viewBoxMinX = minX - paddingX;
-    const viewBoxMinY = minY - paddingY;
-    const viewBoxWidth = graphWidth + (paddingX * 2);
-    const viewBoxHeight = graphHeight + (paddingY * 2);
-    
-    return `${viewBoxMinX} ${viewBoxMinY} ${viewBoxWidth} ${viewBoxHeight}`;
-  }, []);
-
-  const loadChallenge = useCallback((challenge: Challenge) => {
-    setNodes([...challenge.nodes]);
-    setEdges([...challenge.edges]);
-    resetDrawing();
-    setCurrentChallenge(challenge);
-    setShowChallengeSelector(false);
-    // Calculate and set viewBox for the new challenge
-    setViewBox(calculateViewBox(challenge.nodes));
-  }, [resetDrawing, calculateViewBox]);
-
-  // Update viewBox when nodes change
-  useEffect(() => {
-    if (nodes.length > 0) {
-      setViewBox(calculateViewBox(nodes));
-    }
-  }, [nodes, calculateViewBox]);
-
-  const moveToNextChallenge = useCallback(() => {
-    if (!currentChallenge) return;
-    
-    const currentIndex = challenges.findIndex(c => c.id === currentChallenge.id);
-    const nextIndex = currentIndex + 1;
-    
-    if (nextIndex < challenges.length) {
-      loadChallenge(challenges[nextIndex]);
-      setShowCongratulations(false);
-    } else {
-      setShowCongratulations(false);
-      setCurrentChallenge(null);
-      resetDrawing();
-      alert("🎊 Amazing! You've completed all challenges! Well done!");
-    }
-  }, [currentChallenge, loadChallenge, resetDrawing]);
-
-  // Check if cycle is an Eulerian cycle (visits every edge exactly once)
-  useEffect(() => {
-    if (cycle && currentChallenge && !challengeCompleted && detectedPath.length >= 3) {
-      const correct = isEulerianCycle(cycle, currentChallenge.edges);
-      if (correct && !challengeCompleted) {
-        setChallengeCompleted(true);
-        setCompletedChallenges(prev => new Set([...prev, currentChallenge.id]));
-        setShowCongratulations(true);
-        
-        const timer = setTimeout(() => {
-          moveToNextChallenge();
-        }, 3000);
-        
-        return () => clearTimeout(timer);
-      }
-    }
-  }, [cycle, currentChallenge, challengeCompleted, moveToNextChallenge, detectedPath]);
-
-  const nodeById = (id: number) => nodes.find(n => n.id === id);
-
-  const getDifficultyColor = (difficulty: string) => {
-    switch (difficulty) {
-      case 'easy': return 'bg-green-100 text-green-800';
-      case 'medium': return 'bg-yellow-100 text-yellow-800';
-      case 'hard': return 'bg-red-100 text-red-800';
-      default: return 'bg-gray-100 text-gray-800';
     }
   };
 
-  const currentIndex = currentChallenge ? challenges.findIndex(c => c.id === currentChallenge.id) : -1;
-  const hasNextChallenge = currentIndex >= 0 && currentIndex < challenges.length - 1;
+  const handleClaimImpossible = () => {
+    if (currentChallenge?.type === 'impossible') {
+      setVictoryState('impossible-correct');
+      setCompletedChallenges(prev => new Set(prev).add(currentChallenge.id));
+    } else {
+      alert("Actually, this one IS possible! Keep trying.");
+    }
+  };
 
-  // Get path string for SVG
-  const getPathString = () => {
-    if (drawPath.length === 0) return '';
-    return drawPath.map((p, i) => `${i === 0 ? 'M' : 'L'} ${p.x} ${p.y}`).join(' ');
+  // --- Render Helpers ---
+  const lastNodeObj = nodes.find(n => n.id === path[path.length - 1]);
+  const activeNodeObj = nodes.find(n => n.id === activeNode);
+
+  // Calculate used edges for styling
+  const getEdgeStatus = (edge: Edge) => {
+    let used = false;
+    for (let i = 0; i < path.length - 1; i++) {
+      const u = path[i];
+      const v = path[i+1];
+      if ((u === edge.a && v === edge.b) || (u === edge.b && v === edge.a)) {
+        used = true;
+        break;
+      }
+    }
+    return used ? 'used' : 'default';
   };
 
   return (
-    <div className="h-screen bg-gray-50 flex flex-col overflow-hidden">
-      {/* Congratulations Modal */}
-      {showCongratulations && currentChallenge && (
-        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
-          <div className="bg-white rounded-lg shadow-2xl p-8 max-w-md mx-4 text-center animate-bounce-in">
-            <div className="text-6xl mb-4">🎉</div>
-            <h2 className="text-3xl font-bold text-green-600 mb-2">Congratulations!</h2>
-            <p className="text-xl text-gray-700 mb-4">
-              You found the Eulerian cycle in <strong>"{currentChallenge.name}"</strong>!
-            </p>
-            <div className="flex gap-3 justify-center mt-6">
-              {hasNextChallenge ? (
-                <>
-                  <button
-                    onClick={moveToNextChallenge}
-                    className="px-6 py-3 bg-blue-500 text-white rounded-lg hover:bg-blue-600 font-semibold transition-colors"
-                  >
-                    Next Challenge →
-                  </button>
-                  <button
-                    onClick={() => {
-                      setShowCongratulations(false);
-                    }}
-                    className="px-6 py-3 bg-gray-300 text-gray-700 rounded-lg hover:bg-gray-400 font-semibold transition-colors"
-                  >
-                    Stay Here
-                  </button>
-                </>
-              ) : (
-                <button
-                  onClick={() => {
-                    setShowCongratulations(false);
-                    setCurrentChallenge(null);
-                    resetDrawing();
-                    setShowChallengeSelector(true);
-                  }}
-                  className="px-6 py-3 bg-green-500 text-white rounded-lg hover:bg-green-600 font-semibold transition-colors"
-                >
-                  🏆 All Challenges Complete!
-                </button>
-              )}
-            </div>
-            {hasNextChallenge && (
-              <p className="text-sm text-gray-500 mt-4">
-                Moving to next challenge in 3 seconds...
-              </p>
-            )}
-          </div>
+    <div className="h-screen bg-slate-50 flex flex-col font-sans select-none overflow-hidden">
+      
+      {/* Header */}
+      <div className="bg-white p-4 shadow-sm z-10 flex justify-between items-center">
+        <div>
+          <h1 className="font-bold text-gray-800 text-lg">Eulerian Path</h1>
+          <p className="text-xs text-gray-500">
+            {currentChallenge ? currentChallenge.name : "Select a Challenge"}
+          </p>
         </div>
-      )}
-
-      {/* Header with Logo */}
-      <div className="bg-white shadow-sm border-b flex-shrink-0">
-        <div className="px-4 py-3">
-          <div className="flex items-center justify-center gap-6">
-            <img src="/logo.svg" alt="Club Logo" className="h-20 w-20 md:h-28 md:w-28" />
-            <div className="text-center">
-              <h1 className="text-base md:text-lg font-semibold text-gray-700">Eulerian Cycle Challenge</h1>
-              <p className="text-xs text-gray-500 mt-1">Draw Eulerian cycles by touching the screen</p>
-            </div>
-          </div>
-          {currentChallenge && (
-            <div className="text-center mt-2 text-sm text-gray-600">
-              Challenge {currentIndex + 1} of {challenges.length}
-            </div>
-          )}
-        </div>
+        {currentChallenge && (
+           <button onClick={() => setCurrentChallenge(null)} className="text-sm bg-gray-100 px-3 py-1 rounded hover:bg-gray-200">
+             Menu
+           </button>
+        )}
       </div>
 
-      <div className="flex-1 overflow-y-auto px-4 py-4">
-        {/* Challenge Selector */}
-        {showChallengeSelector && (
-          <div className="mb-4 bg-white rounded-lg shadow p-4 max-w-7xl mx-auto">
-            <div className="flex justify-between items-center mb-4">
-              <h2 className="text-xl font-semibold">Select a Challenge</h2>
+      {/* Main Area */}
+      <div className="flex-1 relative flex items-center justify-center p-4">
+        
+        {/* Victory Overlay */}
+        {victoryState !== 'none' && (
+          <div className="absolute inset-0 z-50 bg-white/90 flex flex-col items-center justify-center animate-in fade-in zoom-in duration-300">
+            <div className="text-6xl mb-4">
+              {victoryState === 'success' ? '🎉' : '🧠'}
             </div>
-            <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-5 xl:grid-cols-6 gap-4">
-              {challenges.map(challenge => (
-                <div
-                  key={challenge.id}
-                  className={`border rounded-lg p-4 cursor-pointer transition-all ${
-                    completedChallenges.has(challenge.id)
-                      ? 'bg-green-50 border-green-300'
-                      : 'bg-white hover:shadow-md'
-                  }`}
-                  onClick={() => loadChallenge(challenge)}
-                >
-                  <div className="flex justify-between items-start mb-2">
-                    <h3 className="font-semibold">{challenge.name}</h3>
-                    {completedChallenges.has(challenge.id) && (
-                      <span className="text-green-600">✓</span>
-                    )}
-                  </div>
-                  <span className={`inline-block px-2 py-1 rounded text-xs font-medium ${getDifficultyColor(challenge.difficulty)}`}>
-                    {challenge.difficulty}
-                  </span>
-                </div>
-              ))}
+            <h2 className="text-2xl font-bold text-gray-800">
+              {victoryState === 'success' ? 'Graph Solved!' : 'Correct Observation!'}
+            </h2>
+            <p className="text-gray-600 mt-2 mb-6">
+              {victoryState === 'success' 
+                ? "You visited every edge exactly once." 
+                : "This graph has no Eulerian path (too many odd nodes)."}
+            </p>
+            <div className="flex gap-4">
+               <button 
+                onClick={() => {
+                   const idx = challenges.findIndex(c => c.id === currentChallenge?.id);
+                   if (idx < challenges.length - 1) loadChallenge(challenges[idx + 1]);
+                   else setCurrentChallenge(null);
+                }}
+                className="bg-blue-600 text-white px-6 py-2 rounded-full font-bold shadow hover:bg-blue-700"
+              >
+                Next Level
+              </button>
             </div>
           </div>
         )}
 
-        {/* Main Content */}
-        {currentChallenge && (
-          <div className="flex flex-col bg-white rounded-lg shadow p-4 max-w-7xl mx-auto w-full">
-            <div className="flex justify-between items-center mb-3 flex-shrink-0">
-              <h2 className="text-lg md:text-xl font-semibold">
-                Challenge: {currentChallenge.name}
-              </h2>
-              <button
-                className="px-3 py-1.5 text-sm bg-gray-500 text-white rounded hover:bg-gray-600"
-                onClick={() => {
-                  setCurrentChallenge(null);
-                  resetDrawing();
-                  setShowChallengeSelector(true);
-                }}
+        {!currentChallenge ? (
+          // --- Menu ---
+          <div className="grid grid-cols-2 md:grid-cols-3 gap-3 w-full max-w-2xl overflow-y-auto max-h-full pb-10">
+            {challenges.map(c => (
+              <div 
+                key={c.id}
+                onClick={() => loadChallenge(c)}
+                className={`p-4 rounded-xl border-2 cursor-pointer transition-all hover:-translate-y-1 ${
+                  completedChallenges.has(c.id) ? 'bg-green-50 border-green-400' : 'bg-white border-slate-200'
+                }`}
               >
-                Back to Challenges
-              </button>
-            </div>
-
-            <div className={`mb-3 p-2 rounded flex-shrink-0 ${challengeCompleted ? 'bg-green-100 border-2 border-green-500' : 'bg-blue-50 border border-blue-200'}`}>
-              <div className="flex justify-between items-center">
-                <p className="text-xs text-gray-600">
-                  👆 Touch and drag along the edges to draw an Eulerian cycle (visit every edge exactly once)
-                </p>
-                {challengeCompleted && (
-                  <span className="text-green-700 font-semibold text-sm">✓ Completed!</span>
-                )}
-              </div>
-            </div>
-
-            <div className="border rounded relative flex-1 min-h-[400px] flex items-center justify-center" style={{ touchAction: 'none' }}>
-              <svg 
-                ref={svgRef} 
-                width="100%" 
-                height="100%" 
-                viewBox={viewBox}
-                preserveAspectRatio="xMidYMid meet"
-                style={{ background: '#fafafa', minHeight: '400px' }}
-                onTouchStart={handleStart}
-                onTouchMove={handleMove}
-                onTouchEnd={handleEnd}
-                onMouseDown={handleStart}
-                onMouseMove={handleMove}
-                onMouseUp={handleEnd}
-                onMouseLeave={handleEnd}
-              >
-                {/* Edges */}
-                {edges.map(ed => {
-                  const a = nodeById(ed.a);
-                  const b = nodeById(ed.b);
-                  if (!a || !b) return null;
-                  const inCycle = cycle && (() => {
-                    // Iterate up to length - 1 to avoid the duplicate start node edge
-                    for (let i = 0; i < cycle.length - 1; i++) {
-                      const n1 = cycle[i];
-                      const n2 = cycle[i + 1];
-                      if ((n1 === a.id && n2 === b.id) || (n1 === b.id && n2 === a.id)) return true;
-                    }
-                    return false;
-                  })();
-                  const isCorrect = currentChallenge && cycle && challengeCompleted;
-                  return (
-                    <g key={ed.id}>
-                      <line
-                        x1={a.x}
-                        y1={a.y}
-                        x2={b.x}
-                        y2={b.y}
-                        stroke={isCorrect ? "#10b981" : inCycle ? "#ff6b6b" : "#999"}
-                        strokeWidth={inCycle || isCorrect ? 4 : 2}
-                      />
-                    </g>
-                  );
-                })}
-
-                {/* Drawn path */}
-                {drawPath.length > 1 && (
-                  <path
-                    ref={pathRef}
-                    d={getPathString()}
-                    fill="none"
-                    stroke="#3b82f6"
-                    strokeWidth="3"
-                    strokeLinecap="round"
-                    strokeLinejoin="round"
-                    opacity="0.6"
-                  />
-                )}
-
-                {/* Nodes */}
-                {nodes.map(n => {
-                  const inPath = detectedPath.includes(n.id);
-                  const isCycleNode = cycle && cycle.includes(n.id);
-                  const isCorrect = currentChallenge && cycle && challengeCompleted && isCycleNode;
-                  const isStart = detectedPath.length > 0 && detectedPath[0] === n.id;
-                  return (
-                    <g key={n.id} transform={`translate(${n.x}, ${n.y})`}>
-                      <circle
-                        r={20}
-                        fill={isCorrect ? "#10b981" : isCycleNode ? "#ffe66d" : inPath ? "#cfe3ff" : "#fff"}
-                        stroke={isCorrect ? "#059669" : isStart ? "#3b82f6" : "#333"}
-                        strokeWidth={isCorrect || isStart ? 3 : 2}
-                      />
-                      <text x={0} y={6} textAnchor="middle" style={{ fontSize: 12, fontWeight: 600 }}>
-                        {n.id}
-                      </text>
-                    </g>
-                  );
-                })}
-              </svg>
-            </div>
-
-            <div className="mt-2 text-xs text-gray-700 flex-shrink-0">
-              <div>
-                Detected path: {detectedPath.length > 0 ? detectedPath.join(' → ') : 'Draw a path...'}
-                {cycle && (cycle.length > 1 
-                  ? ` (Cycle: ${cycle.slice(0, -1).join(' → ')} → ${cycle[0]})`
-                  : ` (Cycle: ${cycle.join(' → ')})`)}
-              </div>
-              {currentChallenge && cycle && !challengeCompleted && (
-                <div className="mt-1 text-orange-600 font-medium">
-                  ⚠ Path found, but it's not an Eulerian cycle. Visit every edge exactly once!
+                <div className="flex justify-between">
+                  <span className="font-bold text-slate-700">{c.name}</span>
+                  {completedChallenges.has(c.id) && <span>✅</span>}
                 </div>
-              )}
+                <div className="flex gap-2 mt-2">
+                  <span className={`text-xs px-2 py-0.5 rounded-full ${
+                    c.difficulty === 'easy' ? 'bg-green-100 text-green-700' : 
+                    c.difficulty === 'hard' ? 'bg-red-100 text-red-700' : 'bg-yellow-100 text-yellow-700'
+                  }`}>
+                    {c.difficulty}
+                  </span>
+                  {c.type === 'impossible' && <span className="text-xs px-2 py-0.5 rounded-full bg-purple-100 text-purple-700">Tricky</span>}
+                </div>
+              </div>
+            ))}
+          </div>
+        ) : (
+          // --- Game Board ---
+          <div className="w-full max-w-lg aspect-square relative bg-white rounded-2xl shadow-xl border border-slate-200 overflow-hidden">
+            
+            {/* HUD */}
+            <div className="absolute top-4 left-4 right-4 flex justify-between items-start pointer-events-none">
+              <div className="bg-slate-800/80 text-white px-3 py-1 rounded-full text-xs font-mono backdrop-blur-sm">
+                Edges: {path.length > 0 ? path.length - 1 : 0} / {edges.length}
+              </div>
+              <div className="pointer-events-auto flex gap-2">
+                 <button onClick={reset} className="bg-red-100 text-red-600 px-3 py-1 rounded-full text-xs font-bold hover:bg-red-200">
+                    Reset
+                 </button>
+                 <button onClick={handleClaimImpossible} className="bg-purple-100 text-purple-600 px-3 py-1 rounded-full text-xs font-bold hover:bg-purple-200 border border-purple-200">
+                    Impossible?
+                 </button>
+              </div>
             </div>
+
+            <svg 
+              ref={svgRef}
+              viewBox="0 0 400 400"
+              className="w-full h-full touch-none"
+              style={{ touchAction: 'none' }}
+              onTouchStart={handleStart}
+              onTouchMove={handleMove}
+              onTouchEnd={handleEnd}
+              onMouseDown={handleStart}
+              onMouseMove={handleMove}
+              onMouseUp={handleEnd}
+              onMouseLeave={handleEnd}
+            >
+              {/* 1. Base Edges */}
+              {edges.map(e => (
+                <line 
+                  key={e.id}
+                  x1={nodes.find(n=>n.id===e.a)?.x} y1={nodes.find(n=>n.id===e.a)?.y}
+                  x2={nodes.find(n=>n.id===e.b)?.x} y2={nodes.find(n=>n.id===e.b)?.y}
+                  stroke="#e2e8f0" strokeWidth="8" strokeLinecap="round"
+                />
+              ))}
+
+              {/* 2. Used Edges */}
+              {edges.map(e => {
+                const status = getEdgeStatus(e);
+                if (status !== 'used') return null;
+                const n1 = nodes.find(n=>n.id===e.a);
+                const n2 = nodes.find(n=>n.id===e.b);
+                return (
+                  <line 
+                    key={`used-${e.id}`}
+                    x1={n1?.x} y1={n1?.y} x2={n2?.x} y2={n2?.y}
+                    stroke="#3b82f6" strokeWidth="8" strokeLinecap="round"
+                  />
+                )
+              })}
+
+              {/* 3. Rubber Band (Preview) */}
+              {isDrawing && lastNodeObj && cursor && (
+                <line 
+                  x1={lastNodeObj.x} y1={lastNodeObj.y}
+                  x2={activeNodeObj ? activeNodeObj.x : cursor.x} 
+                  y2={activeNodeObj ? activeNodeObj.y : cursor.y}
+                  stroke="#60a5fa" strokeWidth="4" strokeDasharray="6,6" opacity="0.6"
+                  className="pointer-events-none"
+                />
+              )}
+
+              {/* 4. Nodes */}
+              {nodes.map(n => {
+                const isActive = activeNode === n.id;
+                const isVisited = path.includes(n.id);
+                const isCurrent = path[path.length-1] === n.id;
+                
+                return (
+                  <g key={n.id}>
+                     {/* Transparent Hitbox */}
+                     <circle cx={n.x} cy={n.y} r="30" fill="transparent" />
+                     {/* Visual Node */}
+                     <circle 
+                        cx={n.x} cy={n.y} 
+                        r={isActive ? 14 : 9}
+                        fill={isCurrent ? "#2563eb" : isVisited ? "#60a5fa" : "#cbd5e1"}
+                        stroke="white" strokeWidth="3"
+                        className="transition-all duration-200"
+                     />
+                     {/* Degree hint (optional, good for learning) */}
+                     {/* <text x={n.x} y={n.y+25} textAnchor="middle" fontSize="10" fill="#94a3b8">ID:{n.id}</text> */}
+                  </g>
+                );
+              })}
+            </svg>
           </div>
         )}
       </div>
